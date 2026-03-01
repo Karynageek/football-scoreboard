@@ -26,6 +26,15 @@ class ScoreBoardService
         unset($this->games[$homeTeam . '-' . $awayTeam]);
     }
 
+    public function updateScore(string $homeTeam, string $awayTeam, int $homeScore, int $awayScore): void
+    {
+        if (!isset($this->games[$homeTeam . '-' . $awayTeam])) {
+            throw new \Exception('Game not started');
+        }
+
+        $this->games[$homeTeam . '-' . $awayTeam] = new Game($homeScore, $awayScore);
+    }
+
     public function getGames(): array
     {
         return $this->games;
