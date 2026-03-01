@@ -3,14 +3,15 @@
 namespace App\Domain;
 
 use App\Domain\ValueObject\Game;
+use App\Domain\ValueObject\Team;
 
 interface GameRepositoryInterface
 {
-    public function add(string $homeTeam, string $awayTeam, int $id): void;
+    public function save(Game $game): void;
 
-    public function remove(string $homeTeam, string $awayTeam): void;
+    public function remove(Team $home, Team $away): void;
 
-    public function find(string $homeTeam, string $awayTeam): Game;
+    public function find(Team $home, Team $away): ?Game;
 
     /**
      * @return Game[]

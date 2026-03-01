@@ -4,6 +4,7 @@ namespace App\Tests\Unit\Application;
 
 use App\Application\ScoreBoardService;
 use App\Domain\ValueObject\Game;
+use App\Domain\ValueObject\Team;
 use App\Infrastructure\Repository\GameRepository;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -22,7 +23,7 @@ class ScoreBoardServiceTest extends TestCase
     }
 
     #[Test]
-    public function it_adds_to_score_board_when_game_started()
+    public function it_starts_game_with_zero_score()
     {
         /* EXECUTE */
         $this->scoreBoardService->startGame('Mexico', 'Canada');
@@ -30,12 +31,13 @@ class ScoreBoardServiceTest extends TestCase
         /* ASSERT */
         $this->assertCount(1, $this->gameRepository->all());
 
-        $game = $this->gameRepository->find('Mexico', 'Canada');
-        $this->assertEquals('Mexico', $game->getHomeTeam());
-        $this->assertEquals('Canada', $game->getAwayTeam());
-        $this->assertEquals(0, $game->getHomeScore());
-        $this->assertEquals(0, $game->getAwayScore());
-        $this->assertEquals(0, $game->getTotalScore());
+        $game = $this->gameRepository->find(new Team('Mexico'), new Team('Canada'));
+
+        $this->assertSame('Mexico', $game->getHomeTeam()->getName());
+        $this->assertSame('Canada', $game->getAwayTeam()->getName());
+        $this->assertSame(0, $game->getHomeScore());
+        $this->assertSame(0, $game->getAwayScore());
+        $this->assertSame(0, $game->getTotalScore());
     }
 
     #[Test]
@@ -45,11 +47,47 @@ class ScoreBoardServiceTest extends TestCase
         $this->scoreBoardService->startGame('Mexico', 'Canada');
 
         /* ASSERT */
-        $this->expectException(\Exception::class);
+        $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Game already started');
 
         /* EXECUTE */
         $this->scoreBoardService->startGame('Mexico', 'Canada');
+    }
+
+    #[Test]
+    public function it_throws_exception_when_home_and_away_are_same(): void
+    {
+        /* ASSERT */
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Home and Away teams must be different');
+
+        /* EXECUTE */
+        $this->scoreBoardService->startGame('Mexico', 'Mexico');
+    }
+
+    #[Test]
+    public function it_treats_team_names_case_insensitively(): void
+    {
+        /* SETUP */
+        $this->scoreBoardService->startGame('Mexico', 'Canada');
+
+        /* ASSERT */
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Game already started');
+
+        /* EXECUTE */
+        $this->scoreBoardService->startGame('mexico', 'canada');
+    }
+
+    #[Test]
+    public function it_throws_exception_when_team_name_is_empty()
+    {
+        /* ASSERT */
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Team name cannot be empty');
+
+        /* EXECUTE */
+        $this->scoreBoardService->startGame('Mexico', '');
     }
 
     #[Test]
@@ -66,18 +104,33 @@ class ScoreBoardServiceTest extends TestCase
     }
 
     #[Test]
-    public function it_throws_an_exception_if_game_not_started_and_finished()
+    public function it_throws_an_exception_if_finished_non_existing_game()
     {
         /* ASSERT */
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('Game not started');
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Game not found');
 
         /* EXECUTE */
         $this->scoreBoardService->finishGame('Mexico', 'Canada');
     }
 
     #[Test]
-    public function it_updates_score_when_game_started()
+    public function it_finishes_only_specific_game(): void
+    {
+        /* SETUP */
+        $this->scoreBoardService->startGame('Mexico', 'Canada');
+        $this->scoreBoardService->startGame('Spain', 'Brazil');
+
+        /* EXECUTE */
+        $this->scoreBoardService->finishGame('Mexico', 'Canada');
+
+        /* ASSERT */
+        $this->assertCount(1, $this->gameRepository->all());
+        $this->assertNotNull($this->gameRepository->find(new Team('Spain'), new Team('Brazil')));
+    }
+
+    #[Test]
+    public function it_updates_existing_game_score()
     {
         /* SETUP */
         $this->scoreBoardService->startGame('Mexico', 'Canada');
@@ -90,19 +143,19 @@ class ScoreBoardServiceTest extends TestCase
         /* ASSERT */
         $this->assertCount(1, $this->gameRepository->all());
 
-        $game = $this->gameRepository->find('Mexico', 'Canada');
-        $this->assertEquals('Mexico', $game->getHomeTeam());
-        $this->assertEquals('Canada', $game->getAwayTeam());
-        $this->assertEquals($newHomeScore, $game->getHomeScore());
-        $this->assertEquals($newAwayScore, $game->getAwayScore());
-        $this->assertEquals($newHomeScore + $newAwayScore, $game->getTotalScore());
+        $game = $this->gameRepository->find(new Team('Mexico'), new Team('Canada'));
+        $this->assertSame('Mexico', $game->getHomeTeam()->getName());
+        $this->assertSame('Canada', $game->getAwayTeam()->getName());
+        $this->assertSame($newHomeScore, $game->getHomeScore());
+        $this->assertSame($newAwayScore, $game->getAwayScore());
+        $this->assertSame($newHomeScore + $newAwayScore, $game->getTotalScore());
     }
 
     #[Test]
     public function it_throws_an_exception_if_game_not_started()
     {
         /* ASSERT */
-        $this->expectException(\Exception::class);
+        $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Game not found');
 
         /* EXECUTE */
@@ -110,7 +163,21 @@ class ScoreBoardServiceTest extends TestCase
     }
 
     #[Test]
-    public function it_gets_summary_of_games_by_total_score()
+    public function it_throws_exception_for_negative_scores(): void
+    {
+        /* SETUP */
+        $this->scoreBoardService->startGame('Mexico', 'Canada');
+
+        /* ASSERT */
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Scores cannot be negative');
+
+        /* EXECUTE */
+        $this->scoreBoardService->updateScore('Mexico', 'Canada', -1, 2);
+    }
+
+    #[Test]
+    public function it_returns_games_sorted_by_total_score_and_recency()
     {
         /* SETUP */
         $this->scoreBoardService->startGame('Mexico', 'Canada');
@@ -134,8 +201,8 @@ class ScoreBoardServiceTest extends TestCase
         $actual = array_map(
             fn (Game $game) => sprintf(
                 '%s-%s:%d-%d',
-                $game->getHomeTeam(),
-                $game->getAwayTeam(),
+                $game->getHomeTeam()->getName(),
+                $game->getAwayTeam()->getName(),
                 $game->getHomeScore(),
                 $game->getAwayScore()
             ),
@@ -150,6 +217,6 @@ class ScoreBoardServiceTest extends TestCase
             'Germany-France:2-2',
         ];
 
-        $this->assertEquals($expected, $actual);
+        $this->assertSame($expected, $actual);
     }
 }
