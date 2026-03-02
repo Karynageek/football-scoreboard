@@ -1,0 +1,14 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/Domain/ValueObject/'
+            - '../src/Domain/Exception/'
+            - '../src/Kernel.php'
+
+    App\Domain\GameRepositoryInterface: '@App\Infrastructure\Repository\GameRepository'

@@ -2,14 +2,16 @@
 
 namespace App\Application;
 
+use App\Domain\Exception\GameAlreadyStartedException;
+use App\Domain\Exception\GameNotFoundException;
+use App\Domain\GameRepositoryInterface;
 use App\Domain\ValueObject\Game;
 use App\Domain\ValueObject\Team;
-use App\Infrastructure\Repository\GameRepository;
 
 class ScoreBoardService
 {
     public function __construct(
-        private GameRepository $gameRepository
+        private GameRepositoryInterface $gameRepository
     ) {
     }
 
@@ -19,7 +21,7 @@ class ScoreBoardService
         $away = new Team($awayTeam);
 
         if ($this->gameRepository->find($home, $away)) {
-            throw new \InvalidArgumentException('Game already started');
+            throw new GameAlreadyStartedException($home, $away);
         }
 
         $this->gameRepository->save(new Game($home, $away));
@@ -33,7 +35,7 @@ class ScoreBoardService
         $game = $this->gameRepository->find($home, $away);
 
         if (!$game) {
-            throw new \InvalidArgumentException('Game not found');
+            throw new GameNotFoundException($home, $away);
         }
 
         $this->gameRepository->remove($home, $away);
@@ -41,10 +43,13 @@ class ScoreBoardService
 
     public function updateScore(string $homeTeam, string $awayTeam, int $homeScore, int $awayScore): void
     {
-        $game = $this->gameRepository->find(new Team($homeTeam), new Team($awayTeam));
+        $home = new Team($homeTeam);
+        $away = new Team($awayTeam);
+
+        $game = $this->gameRepository->find($home, $away);
 
         if (!$game) {
-            throw new \InvalidArgumentException('Game not found');
+            throw new GameNotFoundException($home, $away);
         }
 
         $game->updateScore($homeScore, $awayScore);
@@ -61,7 +66,8 @@ class ScoreBoardService
                 return $scoreComparison;
             }
 
-            // Most recently added first
+            // Games with the same total score will be returned
+            // ordered by the most recently added
             return $b->getId() <=> $a->getId();
         });
 

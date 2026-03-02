@@ -2,6 +2,9 @@
 
 namespace App\Domain\ValueObject;
 
+use App\Domain\Exception\InvalidScoreException;
+use App\Domain\Exception\SameTeamException;
+
 class Game
 {
     private int $homeScore = 0;
@@ -13,7 +16,7 @@ class Game
         private Team $awayTeam
     ) {
         if ($this->homeTeam->equals($this->awayTeam)) {
-            throw new \InvalidArgumentException('Home and Away teams must be different');
+            throw new SameTeamException($this->homeTeam);
         }
     }
 
@@ -58,7 +61,7 @@ class Game
     public function updateScore(int $homeScore, int $awayScore): void
     {
         if ($homeScore < 0 || $awayScore < 0) {
-            throw new \InvalidArgumentException('Scores cannot be negative');
+            throw new InvalidScoreException($homeScore, $awayScore);
         }
         $this->homeScore = $homeScore;
         $this->awayScore = $awayScore;

@@ -2,6 +2,8 @@
 
 namespace App\Domain\ValueObject;
 
+use App\Domain\Exception\InvalidTeamNameException;
+
 class Team
 {
     private string $name;
@@ -10,7 +12,7 @@ class Team
         $trimmed = ucfirst(strtolower(trim($name)));
 
         if (empty($trimmed)) {
-            throw new \InvalidArgumentException('Team name cannot be empty');
+            throw new InvalidTeamNameException($name);
         }
 
         $this->name = $trimmed;
