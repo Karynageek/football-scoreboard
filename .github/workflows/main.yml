@@ -32,7 +32,7 @@ jobs:
           restore-keys: composer-${{ matrix.php-version }}-
 
       - name: Copy .env
-        run: php -r "file_exists('.env.test') || copy('.env.ci', '.env.test');"
+        run: cp .env.ci .env
 
       - name: Install dependencies
         run: composer install --no-interaction --no-scripts --no-progress --prefer-dist --optimize-autoloader
