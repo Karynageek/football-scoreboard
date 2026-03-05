@@ -1,0 +1,41 @@
+name: Main
+
+on:
+  push:
+    branches: [ master]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        php-version: ['8.3']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: ctype, iconv
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ matrix.php-version }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ matrix.php-version }}-
+
+      - name: Copy .env
+        run: cp .env.ci .env
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-scripts --no-progress --prefer-dist --optimize-autoloader
+
+      - name: Run tests
+        run: vendor/bin/phpunit --configuration phpunit.dist.xml
