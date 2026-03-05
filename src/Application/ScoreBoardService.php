@@ -2,9 +2,10 @@
 
 namespace App\Application;
 
-use App\Domain\Exception\GameAlreadyStartedException;
 use App\Domain\Exception\GameNotFoundException;
+use App\Domain\Exception\TeamAlreadyPlayingException;
 use App\Domain\GameRepositoryInterface;
+use App\Domain\ValueObject\Continent;
 use App\Domain\ValueObject\Game;
 use App\Domain\ValueObject\Team;
 
@@ -20,11 +21,20 @@ class ScoreBoardService
         $home = new Team($homeTeam);
         $away = new Team($awayTeam);
 
-        if ($this->gameRepository->find($home, $away)) {
-            throw new GameAlreadyStartedException($home, $away);
-        }
+        $this->validateTeamAvailability($home, $away);
 
         $this->gameRepository->save(new Game($home, $away));
+    }
+
+    private function validateTeamAvailability(Team $home, Team $away): void
+    {
+        if ($this->gameRepository->isTeamPlaying($home)) {
+            throw new TeamAlreadyPlayingException($home);
+        }
+
+        if ($this->gameRepository->isTeamPlaying($away)) {
+            throw new TeamAlreadyPlayingException($away);
+        }
     }
 
     public function finishGame(string $homeTeam, string $awayTeam): void
@@ -55,9 +65,10 @@ class ScoreBoardService
         $game->updateScore($homeScore, $awayScore);
     }
 
-    public function getSummaryOfGamesByTotalScore(): array
+    public function getSummaryOfGamesByTotalScore(?string $continent = null): array
     {
-        $games = $this->gameRepository->all();
+        $continentEnum = $continent ? Continent::tryFrom($continent) : null;
+        $games = $this->gameRepository->findByContinent($continentEnum);
 
         usort($games, function (Game $a, Game $b) {
             $scoreComparison = $b->getTotalScore() <=> $a->getTotalScore();
