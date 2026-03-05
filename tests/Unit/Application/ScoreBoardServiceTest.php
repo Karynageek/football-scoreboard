@@ -3,11 +3,11 @@
 namespace App\Tests\Unit\Application;
 
 use App\Application\ScoreBoardService;
-use App\Domain\Exception\GameAlreadyStartedException;
 use App\Domain\Exception\GameNotFoundException;
 use App\Domain\Exception\InvalidScoreException;
 use App\Domain\Exception\InvalidTeamNameException;
 use App\Domain\Exception\SameTeamException;
+use App\Domain\Exception\TeamAlreadyPlayingException;
 use App\Domain\GameRepositoryInterface;
 use App\Domain\ValueObject\Game;
 use App\Domain\ValueObject\Team;
@@ -47,17 +47,66 @@ class ScoreBoardServiceTest extends KernelTestCase
     }
 
     #[Test]
-    public function it_throws_an_exception_if_game_already_started(): void
-    {
+    #[DataProvider('alreadyPlayingTeamProvider')]
+    public function it_throws_exception_when_team_is_already_playing(
+        array $existingGames,
+        string $newHomeTeam,
+        string $newAwayTeam,
+        string $alreadyPlayingTeam
+    ): void {
         /* SETUP */
-        $this->scoreBoardService->startGame('Mexico', 'Canada');
+        foreach ($existingGames as [$home, $away]) {
+            $this->scoreBoardService->startGame($home, $away);
+        }
 
         /* ASSERT */
-        $this->expectException(GameAlreadyStartedException::class);
-        $this->expectExceptionMessage('Game between Mexico and Canada has already been started');
+        $this->expectException(TeamAlreadyPlayingException::class);
+        $this->expectExceptionMessage(
+            sprintf('Team %s is already playing in another game', $alreadyPlayingTeam)
+        );
 
         /* EXECUTE */
-        $this->scoreBoardService->startGame('Mexico', 'Canada');
+        $this->scoreBoardService->startGame($newHomeTeam, $newAwayTeam);
+    }
+
+    public static function alreadyPlayingTeamProvider(): array
+    {
+        return [
+            'same teams same order' => [
+                'existingGames' => [
+                    ['Mexico', 'Canada'],
+                ],
+                'newHomeTeam' => 'Mexico',
+                'newAwayTeam' => 'Canada',
+                'alreadyPlayingTeam' => 'Mexico',
+            ],
+            'same teams reversed order' => [
+                'existingGames' => [
+                    ['Mexico', 'Canada'],
+                ],
+                'newHomeTeam' => 'Canada',
+                'newAwayTeam' => 'Mexico',
+                'alreadyPlayingTeam' => 'Canada',
+            ],
+            'home team already playing' => [
+                'existingGames' => [
+                    ['Spain', 'Brazil'],
+                    ['Germany', 'France'],
+                ],
+                'newHomeTeam' => 'Spain',
+                'newAwayTeam' => 'France',
+                'alreadyPlayingTeam' => 'Spain',
+            ],
+            'away team already playing' => [
+                'existingGames' => [
+                    ['Austria', 'Brazil'],
+                    ['Germany', 'France'],
+                ],
+                'newHomeTeam' => 'Spain',
+                'newAwayTeam' => 'France',
+                'alreadyPlayingTeam' => 'France',
+            ],
+        ];
     }
 
     #[Test]
@@ -84,8 +133,10 @@ class ScoreBoardServiceTest extends KernelTestCase
         $this->scoreBoardService->startGame($canonicalHomeTeam, $canonicalAwayTeam);
 
         /* ASSERT */
-        $this->expectException(GameAlreadyStartedException::class);
-        $this->expectExceptionMessage('Game between Mexico and Canada has already been started');
+        $this->expectException(TeamAlreadyPlayingException::class);
+        $this->expectExceptionMessage(
+            sprintf('Team %s is already playing in another game', $canonicalHomeTeam)
+        );
 
         /* EXECUTE */
         $this->scoreBoardService->startGame($variantHomeTeam, $variantAwayTeam);
@@ -184,6 +235,19 @@ class ScoreBoardServiceTest extends KernelTestCase
     }
 
     #[Test]
+    public function it_finishes_game_when_teams_given_in_reversed_order(): void
+    {
+        /* SETUP */
+        $this->scoreBoardService->startGame('Mexico', 'Canada');
+
+        /* EXECUTE */
+        $this->scoreBoardService->finishGame('Canada', 'Mexico');
+
+        /* ASSERT */
+        $this->assertCount(0, $this->gameRepository->all());
+    }
+
+    #[Test]
     public function it_throws_an_exception_if_finished_non_existing_game(): void
     {
         /* ASSERT */
@@ -207,6 +271,21 @@ class ScoreBoardServiceTest extends KernelTestCase
         /* ASSERT */
         $this->assertCount(1, $this->gameRepository->all());
         $this->assertNotNull($this->gameRepository->find(new Team('Spain'), new Team('Brazil')));
+    }
+
+    #[Test]
+    public function it_updates_score_when_teams_given_in_reversed_order(): void
+    {
+        /* SETUP */
+        $this->scoreBoardService->startGame('Mexico', 'Canada');
+
+        /* EXECUTE */
+        $this->scoreBoardService->updateScore('Canada', 'Mexico', 3, 1);
+
+        /* ASSERT */
+        $game = $this->gameRepository->find(new Team('Mexico'), new Team('Canada'));
+        $this->assertSame(3, $game->getHomeScore());
+        $this->assertSame(1, $game->getAwayScore());
     }
 
     #[Test]
@@ -381,4 +460,42 @@ class ScoreBoardServiceTest extends KernelTestCase
 
         $this->assertSame($expected, $actual);
     }
+
+    #[Test]
+    public function it_includes_only_teams_by_continent_in_summary(): void
+    {
+        /* SETUP */
+        $this->scoreBoardService->startGame('Mexico', 'Canada');
+        $this->scoreBoardService->startGame('Spain', 'Brazil');
+        $this->scoreBoardService->startGame('Germany', 'France');
+
+        $this->scoreBoardService->updateScore('Mexico', 'Canada', 0, 5);
+        $this->scoreBoardService->updateScore('Spain', 'Brazil', 10, 2);
+        $this->scoreBoardService->updateScore('Germany', 'France', 2, 2);
+
+        /* EXECUTE */
+        $result = $this->scoreBoardService->getSummaryOfGamesByTotalScore('Europe');
+
+        /* ASSERT */
+        $this->assertCount(2, $result);
+
+        $actual = array_map(
+            fn (Game $game) => sprintf(
+                '%s-%s:%d-%d',
+                $game->getHomeTeam()->getName(),
+                $game->getAwayTeam()->getName(),
+                $game->getHomeScore(),
+                $game->getAwayScore()
+            ),
+            $result
+        );
+
+        $expected = [
+            'Spain-Brazil:10-2',
+            'Germany-France:2-2',
+        ];
+
+        $this->assertSame($expected, $actual);
+    }
+
 }

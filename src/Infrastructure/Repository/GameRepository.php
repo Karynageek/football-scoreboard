@@ -3,6 +3,7 @@
 namespace App\Infrastructure\Repository;
 
 use App\Domain\GameRepositoryInterface;
+use App\Domain\ValueObject\Continent;
 use App\Domain\ValueObject\Game;
 use App\Domain\ValueObject\Team;
 
@@ -23,12 +24,49 @@ class GameRepository implements GameRepositoryInterface
 
     public function remove(Team $home, Team $away): void
     {
-        unset($this->games[$this->generateKey($home, $away)]);
+        $key = $this->findKey($home, $away);
+
+        if ($key !== null) {
+            unset($this->games[$key]);
+        }
     }
 
     public function find(Team $home, Team $away): ?Game
     {
-        return $this->games[$this->generateKey($home, $away)] ?? null;
+        $key = $this->findKey($home, $away);
+
+        if ($key !== null) {
+            return $this->games[$key];
+        }
+
+        return null;
+    }
+
+    public function isTeamPlaying(Team $team): bool
+    {
+        foreach ($this->games as $game) {
+            if ($game->getHomeTeam()->equals($team) || $game->getAwayTeam()->equals($team)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function findByContinent(?Continent $continent = null): array
+    {
+        $games = $this->games;
+
+        if ($continent !== null) {
+            $games = array_filter(
+                $games,
+                fn(Game $game) =>
+                    $continent->containsTeam($game->getHomeTeam()) ||
+                    $continent->containsTeam($game->getAwayTeam())
+            );
+        }
+
+        return array_values($games);
     }
 
     public function all(): array
@@ -39,5 +77,20 @@ class GameRepository implements GameRepositoryInterface
     private function generateKey(Team $home, Team $away): string
     {
         return "{$home->getName()}-{$away->getName()}";
+    }
+
+    private function findKey(Team $home, Team $away): ?string
+    {
+        $directKey = $this->generateKey($home, $away);
+        if (isset($this->games[$directKey])) {
+            return $directKey;
+        }
+
+        $reverseKey = $this->generateKey($away, $home);
+        if (isset($this->games[$reverseKey])) {
+            return $reverseKey;
+        }
+
+        return null;
     }
 }
